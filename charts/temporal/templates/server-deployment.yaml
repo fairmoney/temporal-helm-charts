@@ -3,11 +3,6 @@
 {{- $service := include "serviceName" (list $rawService) }}
 {{- $serviceValues := index $.Values.server $rawService }}
 {{- if or (not (hasKey $serviceValues "enabled")) $serviceValues.enabled }}
-{{- $serviceValues := index $.Values.server $service }}
-{{- $replicaCount := $.Values.server.replicaCount }}
-{{- if and (hasKey $serviceValues "replicaCount") (kindIs "float64" $serviceValues.replicaCount) }}
-  {{- $replicaCount = $serviceValues.replicaCount }}
-{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,7 +13,7 @@ metadata:
     {{- include "temporal.resourceLabels" (list $ $service "deployment") | nindent 4 }}
 spec:
   {{- if not $serviceValues.keda }}
-  replicas: {{ $replicaCount }}
+  replicas: {{ default $.Values.server.replicaCount $serviceValues.replicaCount }}
   {{- end }}
   strategy:
     type: {{ $.Values.server.deploymentStrategy.type }}
