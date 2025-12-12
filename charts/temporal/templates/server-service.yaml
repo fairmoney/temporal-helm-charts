@@ -13,11 +13,11 @@ metadata:
   {{- end }}
 spec:
   type: {{ $serviceValues.service.type }}
-  {{- if eq .Values.server.frontend.service.type "LoadBalancer" }}
-  {{- with .Values.server.frontend.service.loadBalancerIP }}
+  {{- if eq $serviceValues.service.type "LoadBalancer" }}
+  {{- with $serviceValues.service.loadBalancerIP }}
   loadBalancerIP: {{ . }}
   {{- end }}
-  {{- with .Values.server.frontend.service.loadBalancerClass }}
+  {{- with $serviceValues.service.loadBalancerClass }}
   loadBalancerClass: {{ . }}
   {{- end }}
   {{- end }}
