@@ -67,6 +67,8 @@ Here is how the upgrade process to newer temporal release from upstream would lo
 
 #### Lets take the example of merging upstream release/v1.25.x into fm/main
 
+**Prerequisite**: Folow the instructions [here] to sync `fairmoney/temporal-docker-builds`.
+
 ```
 git clone https://github.com/fairmoney/temporal.git # Clone the Fairmoney organization repository
 cd temporal
@@ -118,3 +120,38 @@ Then, using `externalsecret` from ESO, the Secrets Manager secret (or the Azure 
 Lastly, a `Bundle.trust.cert-manager.io` resource takes all keys from `temporal-root-ca-list` secret and the local `tls.crt` key from `temporal-ca-secret` and bundles them into a trust bundle written to `temporal-trust-bundle` secret in all namespaces.
 
 Detailed diagram [here](https://www.notion.so/fairmoney/Cross-cluster-trust-for-Temporal-root-CA-using-trust-manager-1967f8f1d6868093a4d3f7ed56ba734e).
+
+
+
+## Sync upstream/main into origin/main (via PR) in `fairmoney/temporal-docker-builds`
+
+This repo uses:
+- **origin** → `fairmoney/temporal-docker-builds` (copy)
+- **upstream** → `temporalio/docker-builds` (source)
+
+### Steps
+
+```bash
+git remote add upstream https://github.com/temporalio/docker-builds.git
+
+# Fetch latest refs
+git fetch upstream
+git fetch origin
+
+# Ensure local main is up to date
+git switch main
+git pull --ff-only origin main
+
+# Create a PR branch
+git switch -c sync-upstream-main
+
+# Merge upstream main
+git merge upstream/main
+# (or: git rebase upstream/main)
+
+# Push branch to fork
+git push -u origin sync-upstream-main
+```
+Open Pull Request sync-upstream-main → main
+
+
