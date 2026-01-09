@@ -1,23 +1,24 @@
-{{- if $.Values.server.enabled }}{{- if or $.Values.schema.createDatabase.enabled $.Values.schema.setup.enabled $.Values.schema.update.enabled }}
+{{- if or $.Values.schema.createDatabase.enabled $.Values.schema.setup.enabled $.Values.schema.update.enabled }}
 {{- $jobData := toJson $.Values }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "temporal.componentname" (list $ "schema") }}-{{ $jobData | sha256sum | trunc 8 }}
+  {{/* We append values hash because job-specs are immutable */}}
+  name: {{ include "temporal.componentname" (list $ (printf "schema-%d" .Release.Revision | replace "." "-")) }}-{{ $jobData | sha256sum | trunc 8 }}
   labels:
     {{- include "temporal.resourceLabels" (list $ "database" "") | nindent 4 }}
   annotations:
     argocd.argoproj.io/sync-wave: "-10"
 spec:
   backoffLimit: {{ $.Values.schema.setup.backoffLimit }}
+  ttlSecondsAfterFinished: 86400
   template:
     metadata:
-      {{/* We append values hash because job-specs are immutable */}}
-      name: {{ include "temporal.componentname" (list $ "schema") }}-{{ $jobData | sha256sum | trunc 8 }}
+      name: {{ include "temporal.componentname" (list $ (printf "schema-%d" .Release.Revision | replace "." "-")) }}-{{ $jobData | sha256sum | trunc 8 }}
       labels:
         {{- include "temporal.resourceLabels" (list $ "database" "") | nindent 8 }}
         {{- with $.Values.schema.podLabels }}
-        {{- toYaml . | nindent 8 }}
+          {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- with $.Values.schema.podAnnotations }}
       annotations:
@@ -27,40 +28,76 @@ spec:
       {{ include "temporal.serviceAccount" $ }}
       restartPolicy: OnFailure
       initContainers:
+        {{- with $.Values.admintools.additionalInitContainers }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- if $.Values.cassandra.enabled }}
-        - name: check-cassandra-service
-          image: busybox
-          command: ['sh', '-c', 'until nc -z {{ include "cassandra.host" $ }} {{ $.Values.cassandra.config.ports.cql }}; do echo waiting for cassandra service; sleep 1; done;']
         - name: check-cassandra
           image: "{{ $.Values.cassandra.image.repo }}:{{ $.Values.cassandra.image.tag }}"
           imagePullPolicy: {{ $.Values.cassandra.image.pullPolicy }}
           command: ['sh', '-c', 'until cqlsh {{ include "cassandra.host" $ }} {{ $.Values.cassandra.config.ports.cql }} -e "SHOW VERSION"; do echo waiting for cassandra to start; sleep 1; done;']
+          {{- with $.Values.schema.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         {{- end }}
         {{- if or $.Values.elasticsearch.enabled }}
         - name: check-elasticsearch
           image: "{{ $.Values.admintools.image.repository }}:{{ $.Values.admintools.image.tag }}"
           imagePullPolicy: {{ $.Values.admintools.image.pullPolicy }}
-          command: ['sh', '-c', 'until curl --silent --fail --user "$ES_USER:$ES_PWD" $ES_SCHEME://$ES_HOST:$ES_PORT 2>&1 > /dev/null; do echo waiting for elasticsearch to start; sleep 1; done;']
+          command: ['/bin/sh', '-c']
+          args:
+            - |
+              set -e
+              echo "Waiting for Elasticsearch to become available..."
+
+              if [ -x /usr/local/bin/temporal-elasticsearch-tool ]; then
+                echo "Using temporal-elasticsearch-tool for Elasticsearch health check"
+                until temporal-elasticsearch-tool --endpoint "$ES_SCHEME://$ES_HOST:$ES_PORT" --user "$ES_USER" --password "$ES_PWD" ping 2>&1 > /dev/null; do
+                  sleep 1
+                done
+              elif command -v curl >/dev/null 2>&1; then
+                echo "Using curl for Elasticsearch health check"
+                until curl --silent --fail --user "$ES_USER:$ES_PWD" "$ES_SCHEME://$ES_HOST:$ES_PORT" 2>&1 > /dev/null; do
+                  sleep 1
+                done
+              else
+                echo "ERROR: Neither temporal-elasticsearch-tool nor curl found" >&2
+                exit 1
+              fi
+              echo "Elasticsearch is ready"
           env:
             {{- include "temporal.admintools-env" (list $ "visibility") | nindent 12 }}
+          {{- with $.Values.schema.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         {{- end }}
         {{- if $.Values.schema.createDatabase.enabled }}
           {{- range $store := (list "default" "visibility") }}
             {{- $storeConfig := index $.Values.server.config.persistence $store }}
             {{- $driver := include "temporal.persistence.driver" (list $ $store) }}
-            {{- if ne $driver "elasticsearch" }}
+            {{- if and (ne $driver "elasticsearch") (ne $driver "custom") }}
         - name: create-{{ $store }}-store
           image: "{{ $.Values.admintools.image.repository }}:{{ $.Values.admintools.image.tag }}"
           imagePullPolicy: {{ $.Values.admintools.image.pullPolicy }}
               {{- if eq $driver "cassandra" }}
-          command: ['temporal-cassandra-tool', 'create', '-k', '{{ $storeConfig.cassandra.keyspace }}', '--replication-factor', '{{ $storeConfig.cassandra.replicationFactor }}']
+          command: ['temporal-cassandra-tool', 'create', '-k', '{{ $storeConfig.cassandra.keyspace }}', '--replication-factor', '{{ $storeConfig.cassandra.replicationFactor }}'{{- if $storeConfig.cassandra.datacenter }}, '--datacenter', '{{ $storeConfig.cassandra.datacenter }}'{{- end }}]
               {{- else if eq $driver "sql" }}
           command: ['temporal-sql-tool', 'create-database']
               {{- end }}
           env:
               {{- include "temporal.admintools-env" (list $ $store) | nindent 12 }}
-              {{- with $.Values.server.additionalVolumeMounts }}
+              {{- with $.Values.admintools.additionalVolumeMounts }}
           volumeMounts:
+                {{- toYaml . | nindent 12 }}
+              {{- end }}
+              {{- with $.Values.schema.resources }}
+          resources:
+                {{- toYaml . | nindent 12 }}
+              {{- end }}
+              {{- with $.Values.schema.containerSecurityContext }}
+          securityContext:
                 {{- toYaml . | nindent 12 }}
               {{- end }}
             {{- end }}
@@ -91,36 +128,82 @@ spec:
           {{- range $store := (list "default" "visibility") }}
             {{- $storeConfig := index $.Values.server.config.persistence $store }}
             {{- $driver := include "temporal.persistence.driver" (list $ $store) }}
+            {{- if ne $driver "custom" }}
         - name: setup-{{ $store }}-store
           image: "{{ $.Values.admintools.image.repository }}:{{ $.Values.admintools.image.tag }}"
           imagePullPolicy: {{ $.Values.admintools.image.pullPolicy }}
-            {{- if eq $driver "cassandra" }}
+              {{- if eq $driver "cassandra" }}
           command: ['temporal-cassandra-tool', 'setup-schema', '-v', '0.0']
-            {{- else if eq $driver "sql" }}
+              {{- else if eq $driver "sql" }}
           command: ['temporal-sql-tool', 'setup-schema', '-v', '0.0']
-            {{- else if eq $driver "elasticsearch" }}
-          command: ['sh', '-c']
+              {{- else if eq $driver "elasticsearch" }}
+          command: ['/bin/sh', '-c']
           args:
-            - 'curl -X PUT --fail --user "$ES_USER:$ES_PWD" $ES_SCHEME://$ES_HOST:$ES_PORT/_template/temporal_visibility_v1_template -H "Content-Type: application/json" --data-binary "@schema/elasticsearch/visibility/index_template_$ES_VERSION.json" 2>&1 &&
-              curl --head --fail --user "$ES_USER:$ES_PWD" $ES_SCHEME://$ES_HOST:$ES_PORT/$ES_VISIBILITY_INDEX 2>&1 ||
-              curl -X PUT --fail --user "$ES_USER:$ES_PWD" $ES_SCHEME://$ES_HOST:$ES_PORT/$ES_VISIBILITY_INDEX 2>&1'
-            {{- end }}
+            - |
+              set -e
+              echo "Setting up Elasticsearch visibility store..."
+
+              if [ -x /usr/local/bin/temporal-elasticsearch-tool ]; then
+                echo "Using temporal-elasticsearch-tool for Elasticsearch setup"
+
+                echo "Setting up cluster settings and index template"
+                temporal-elasticsearch-tool \
+                  --endpoint "$ES_SCHEME://$ES_HOST:$ES_PORT" \
+                  --user "$ES_USER" \
+                  --password "$ES_PWD" \
+                  setup-schema
+
+                echo "Creating visibility index: $ES_VISIBILITY_INDEX"
+                temporal-elasticsearch-tool \
+                  --endpoint "$ES_SCHEME://$ES_HOST:$ES_PORT" \
+                  --user "$ES_USER" \
+                  --password "$ES_PWD" \
+                  create-index \
+                  --index "$ES_VISIBILITY_INDEX" \
+                  --fail
+
+              elif command -v curl >/dev/null 2>&1; then
+                echo "Using curl for Elasticsearch setup"
+
+                echo "Creating index template: temporal_visibility_v1_template"
+                curl -X PUT --fail --user "$ES_USER:$ES_PWD" \
+                  "$ES_SCHEME://$ES_HOST:$ES_PORT/_template/temporal_visibility_v1_template" \
+                  -H "Content-Type: application/json" \
+                  --data-binary "@schema/elasticsearch/visibility/index_template_$ES_VERSION.json"
+
+                echo "Checking if index exists: $ES_VISIBILITY_INDEX"
+                if ! curl --head --fail --user "$ES_USER:$ES_PWD" \
+                  "$ES_SCHEME://$ES_HOST:$ES_PORT/$ES_VISIBILITY_INDEX" 2>&1 > /dev/null; then
+                  echo "Creating index: $ES_VISIBILITY_INDEX"
+                  curl -X PUT --fail --user "$ES_USER:$ES_PWD" \
+                    "$ES_SCHEME://$ES_HOST:$ES_PORT/$ES_VISIBILITY_INDEX"
+                else
+                  echo "Index already exists"
+                fi
+
+              else
+                echo "ERROR: Neither temporal-elasticsearch-tool nor curl found" >&2
+                exit 1
+              fi
+
+              echo "Elasticsearch setup completed successfully"
+              {{- end }}
           env:
-            {{- include "temporal.admintools-env" (list $ $store) | nindent 12 }}
-            {{- with $.Values.server.additionalVolumeMounts }}
+              {{- include "temporal.admintools-env" (list $ $store) | nindent 12 }}
+              {{- with $.Values.admintools.additionalVolumeMounts }}
           volumeMounts:
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with $.Values.schema.resources }}
+                {{- toYaml . | nindent 12 }}
+              {{- end }}
+              {{- with $.Values.schema.resources }}
           resources:
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with $.Values.schema.containerSecurityContext }}
+                {{- toYaml . | nindent 12 }}
+              {{- end }}
+              {{- with $.Values.schema.containerSecurityContext }}
           securityContext:
-              {{- toYaml . | nindent 12 }}
+                {{- toYaml . | nindent 12 }}
+              {{- end }}
             {{- end }}
-          {{- end }}
-          {{- if $.Values.server.config.persistence.secondaryVisibilityStore }}
+            {{- if $.Values.server.config.persistence.secondaryVisibilityStore }}
             {{- $store := "secondaryVisibility" }}
             {{- $storeConfig := index $.Values.server.config.persistence $store }}
             {{- $driver := include "temporal.persistence.driver" (list $ $store) }}
@@ -149,7 +232,8 @@ spec:
             {{- end }}
             {{- with $.Values.schema.containerSecurityContext }}
           securityContext:
-              {{- toYaml . | nindent 12 }}
+                {{- toYaml . | nindent 12 }}
+              {{- end }}
             {{- end }}
           {{- end }}
         {{- end }}
@@ -158,7 +242,7 @@ spec:
             {{- $storeConfig := index $.Values.server.config.persistence $store }}
             {{- $driver := include "temporal.persistence.driver" (list $ $store) }}
             {{- $schema := include "temporal.persistence.schema" $store }}
-            {{- if ne $driver "elasticsearch" }}
+            {{- if and (ne $driver "elasticsearch") (ne $driver "custom") }}
         - name: update-{{ $store }}-store
           image: "{{ $.Values.admintools.image.repository }}:{{ $.Values.admintools.image.tag }}"
           imagePullPolicy: {{ $.Values.admintools.image.pullPolicy }}
@@ -174,7 +258,7 @@ spec:
               {{- end }}
           env:
               {{- include "temporal.admintools-env" (list $ $store) | nindent 12 }}
-              {{- with $.Values.server.additionalVolumeMounts }}
+              {{- with $.Values.admintools.additionalVolumeMounts }}
           volumeMounts:
                 {{- toYaml . | nindent 12 }}
               {{- end }}
@@ -233,8 +317,17 @@ spec:
           args: ['temporal operator namespace describe -n {{ $namespace.name }} || temporal operator namespace create -n {{ $namespace.name }}{{- if hasKey $namespace "retention" }} --retention {{ $namespace.retention }}{{- end }}']
           env:
             - name: TEMPORAL_ADDRESS
+              {{- if and (hasKey $.Values.server "internalFrontend") $.Values.server.internalFrontend.enabled }}
+              value: {{ include "temporal.fullname" $ }}-internal-frontend.{{ $.Release.Namespace }}.svc:{{ $.Values.server.internalFrontend.service.port }}
+              {{- else if $.Values.server.frontend.ingress.enabled }}
+              value: "{{ index $.Values.server.frontend.ingress.hosts 0 }}"
+              {{- else }}
               value: "{{ include "temporal.fullname" $ }}-frontend.{{ $.Release.Namespace }}.svc:{{ $.Values.server.frontend.service.port }}"
-              {{- with $.Values.server.additionalVolumeMounts }}
+              {{- end }}
+              {{- with $.Values.admintools.additionalEnv }}
+                {{- toYaml . | nindent 12 }}
+              {{- end }}
+              {{- with $.Values.admintools.additionalVolumeMounts }}
           volumeMounts:
                 {{- toYaml . | nindent 12 }}
               {{- end }}
@@ -269,20 +362,16 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $.Values.server.nodeSelector }}
+      {{- with $.Values.admintools.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $.Values.server.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with $.Values.server.tolerations }}
+      {{- with $.Values.admintools.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $.Values.server.additionalVolumes }}
+      {{- with $.Values.admintools.additionalVolumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-{{- end -}}{{- end -}}
+{{- end -}}

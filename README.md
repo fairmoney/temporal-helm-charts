@@ -25,7 +25,7 @@ This repo only contains one chart currently, but is structured in the standard h
 
 There are two ways to install the Temporal chart, via our helm repo, or using a local git clone of this repo.
 
-The [Helm repo](https://go.temporal.io/helm-charts/) is the preferred method of installing the chart as it avoids the need for you to clone the repo locally, and also ensures you are using a release which has been tested. All of the examples in this README will use the Helm repo to install the chart.
+The Helm repo (`https://go.temporal.io/helm-charts/`) is the preferred method of installing the chart as it avoids the need for you to clone the repo locally, and also ensures you are using a release which has been tested. All of the examples in this README will use the Helm repo to install the chart.
 
 Note: The values files that we refer to in the examples are not available from the Helm repo. You will need to download them from Github to use them.
 
@@ -87,7 +87,7 @@ temporaltest-worker-7c9d68f4cf-8tzfw           1/1     Running   2          11m
 
 This method requires a three node kubernetes cluster to successfully bring up all the dependencies.
 
-When installed without manully setting dependency replicas to 1, this Temporal Helm Chart configures Temporal to run with a three node Cassandra cluster (for persistence) and Elasticsearch (for "visibility" features), Prometheus, and Grafana. By default, Temporal Helm Chart installs all dependencies, out of the box.
+When installed without manually setting dependency replicas to 1, this Temporal Helm Chart configures Temporal to run with a three node Cassandra cluster (for persistence) and Elasticsearch (for "visibility" features), Prometheus, and Grafana. By default, Temporal Helm Chart installs all dependencies, out of the box.
 
 To install Temporal with all of its dependencies run this command:
 
@@ -110,7 +110,7 @@ helm install \
 
 ### Install with sidecar containers
 
-You may need to provide your own sidecar containers. 
+You may need to provide your own sidecar containers.
 
 For an example, review the values for Google's `cloud sql proxy` in the `values/values.cloudsqlproxy.yaml` and pass that file to `helm install`:
 
@@ -283,7 +283,7 @@ helm install \
 ```
 
 Note that if archival is enabled, it is also enabled for all newly created namespaces.
-Make sure to update the specific archival provider values file to set your configs. 
+Make sure to update the specific archival provider values file to set your configs.
 
 ### Install and configure Temporal
 
@@ -315,6 +315,29 @@ helm install \
   --timeout 15m \
   --wait
 ```
+
+### Enable SSO in Temporal UI
+
+To enable SSO in the temporal UI set following env variables in the `web.additionalEnv`:
+
+```yaml
+- name: TEMPORAL_AUTH_ENABLED
+  value: "true"
+- name: TEMPORAL_AUTH_PROVIDER_URL
+  value: "https://accounts.google.com"
+- name: TEMPORAL_AUTH_CLIENT_ID
+  value: "xxxxx-xxxx.apps.googleusercontent.com"
+- name: TEMPORAL_AUTH_CALLBACK_URL
+  value: "https://xxxx.com:8080/auth/sso/callback"
+```
+
+In the `web.additionalEnvSecretName` set the secret name, the secret should have following
+
+```yaml
+TEMPORAL_AUTH_CLIENT_SECRET: xxxxxxxxxxxxxxx
+```
+
+Reference: <https://docs.temporal.io/references/web-ui-server-env-vars>
 
 ## Play With It
 
@@ -575,3 +598,4 @@ Many thanks to [Banzai Cloud](https://github.com/banzaicloud) whose [Cadence Hel
 
 ## License
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Ftemporalio%2Ftemporal-helm-charts.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Ftemporalio%2Ftemporal-helm-charts?ref=badge_large)
+

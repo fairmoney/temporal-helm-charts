@@ -35,16 +35,18 @@ Create chart name and version as used by the chart label.
 Create the name of the service account
 */}}
 {{- define "temporal.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
 {{ default (include "temporal.fullname" .) .Values.serviceAccount.name }}
+{{- else -}}
+{{ default "default" .Values.serviceAccount.name }}
+{{- end -}}
 {{- end -}}
 
 {{/*
 Define the service account as needed
 */}}
 {{- define "temporal.serviceAccount" -}}
-{{- if .Values.serviceAccount.name -}}
 serviceAccountName: {{ include "temporal.serviceAccountName" . }}
-{{- end -}}
 {{- end -}}
 
 {{/*
@@ -70,6 +72,34 @@ Define the AppVersion
 {{- end -}}
 
 {{/*
+Create the annotations for all resources
+*/}}
+{{- define "temporal.resourceAnnotations" -}}
+{{- $global := index . 0 -}}
+{{- $scope := index . 1 -}}
+{{- $resourceType := index . 2 -}}
+{{- $component := "server" -}}
+{{- if (or (eq $scope "admintools") (eq $scope "web")) -}}
+{{- $component = $scope -}}
+{{- end -}}
+{{- with $resourceType -}}
+{{- $resourceTypeKey := printf "%sAnnotations" . -}}
+{{- $componentAnnotations := (index $global.Values $component $resourceTypeKey) -}}
+{{- $scopeAnnotations := dict -}}
+{{- if hasKey (index $global.Values $component) $scope -}}
+{{- $scopeAnnotations = (index $global.Values $component $scope $resourceTypeKey) -}}
+{{- end -}}
+{{- $resourceAnnotations := merge $scopeAnnotations $componentAnnotations -}}
+{{- range $annotation_name, $annotation_value := $resourceAnnotations }}
+{{ $annotation_name }}: {{ $annotation_value | quote }}
+{{- end -}}
+{{- end -}}
+{{- range $annotation_name, $annotation_value := $global.Values.additionalAnnotations }}
+{{ $annotation_name }}: {{ $annotation_value | quote }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Create the labels for all resources
 */}}
 {{- define "temporal.resourceLabels" -}}
@@ -89,27 +119,20 @@ app.kubernetes.io/managed-by: {{ index $global "Release" "Service" }}
 app.kubernetes.io/instance: {{ index $global "Release" "Name" }}
 app.kubernetes.io/version: {{ include "temporal.appVersion" $global }}
 app.kubernetes.io/part-of: {{ $global.Chart.Name }}
-{{ with $resourceType -}}
+{{- with $resourceType -}}
 {{- $resourceTypeKey := printf "%sLabels" . -}}
-{{- $resourceLabels := dict -}}
-{{- if or (eq $scope "") (ne $component "server") -}}
-{{- $resourceLabels = (index $global.Values $component $resourceTypeKey) -}}
-{{- else -}}
-{{- $resourceLabels = (index $global.Values $component $scope $resourceTypeKey) -}}
+{{- $componentLabels := (index $global.Values $component $resourceTypeKey) -}}
+{{- $scopeLabels := dict -}}
+{{- if hasKey (index $global.Values $component) $scope -}}
+{{- $scopeLabels = (index $global.Values $component $scope $resourceTypeKey) -}}
 {{- end -}}
-{{- range $label_name, $label_value := $resourceLabels -}}
-{{ $label_name}}: {{ $label_value }}
+{{- $resourceLabels := merge $scopeLabels $componentLabels -}}
+{{- range $label_name, $label_value := $resourceLabels }}
+{{ $label_name}}: {{ $label_value | quote }}
 {{- end -}}
 {{- end -}}
-{{ include "temporal.additionalResourceLabels" $global }}
-{{- end -}}
-
-{{/*
-Additonal user specified labels for all resources
-*/}}
-{{- define "temporal.additionalResourceLabels" -}}
-{{- range $label_name, $label_value := .Values.additionalLabels }}
-{{ $label_name }}: {{ $label_value }}
+{{- range $label_name, $label_value := $global.Values.additionalLabels }}
+{{ $label_name }}: {{ $label_value | quote }}
 {{- end -}}
 {{- end -}}
 
@@ -339,6 +362,18 @@ Source: https://stackoverflow.com/a/52024583/3027614
 {{- end -}}
 {{- end -}}
 
+{{- define "temporal.persistence.sql.connectAttributes" -}}
+{{- $global := index . 0 -}}
+{{- $store := index . 1 -}}
+{{- $storeConfig := index $global.Values.server.config.persistence $store -}}
+{{- $driverConfig := $storeConfig.sql -}}
+{{- $result := list -}}
+{{- range $key, $value := $driverConfig.connectAttributes -}}
+  {{- $result = append $result (printf "%s=%v" $key $value) -}}
+{{- end -}}
+{{- join "&" $result -}}
+{{- end -}}
+
 {{- define "temporal.persistence.elasticsearch.secretName" -}}
 {{- $global := index . 0 -}}
 {{- $store := index . 1 -}}
@@ -379,10 +414,12 @@ Source: https://stackoverflow.com/a/52024583/3027614
 All Cassandra hosts.
 */}}
 {{- define "cassandra.hosts" -}}
-{{- range $i := (until (int .Values.cassandra.config.cluster_size)) }}
+{{- $hosts := list -}}
+{{- range $i := (until (int .Values.cassandra.config.cluster_size)) -}}
 {{- $cassandraName := include "call-nested" (list $ "cassandra" "cassandra.fullname") -}}
-{{- printf "%s.%s," $cassandraName $.Release.Namespace -}}
-{{- end }}
+{{- $hosts = append $hosts (printf "%s.%s" $cassandraName $.Release.Namespace) -}}
+{{- end -}}
+{{- join "," $hosts -}}
 {{- end -}}
 
 {{/*
@@ -404,5 +441,17 @@ Usage:
         {{- tpl .value .context }}
     {{- else }}
         {{- tpl (.value | toYaml) .context }}
+    {{- end }}
+{{- end -}}
+
+{{/*
+To modify camelCase to hyphenated internal-frontend service name
+*/}}
+{{- define "serviceName" -}}
+    {{- $service := index . 0 -}}
+    {{- if eq $service "internalFrontend" }}
+        {{- print "internal-frontend" }}
+    {{- else }}
+        {{- print $service }}
     {{- end }}
 {{- end -}}

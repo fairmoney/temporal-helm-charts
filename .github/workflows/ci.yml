@@ -2,6 +2,9 @@ name: Lint Charts
 
 on: pull_request
 
+permissions:
+  contents: read
+
 jobs:
   lint-test:
     runs-on: ubuntu-latest
@@ -14,15 +17,26 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4.2.0
         with:
-          version: v3.14.4
+          version: v3.18.0
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
           check-latest: true
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'charts/temporal/tests/go.mod'
+
       - name: Set up chart-testing
         uses: fairmoney/chart-testing-action@v2.6.1
+
+      - name: Add dependency repos
+        run: |
+          helm repo add incubator https://charts.helm.sh/incubator
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add elastic https://helm.elastic.co
+          helm repo add grafana https://grafana.github.io/helm-charts
 
       - name: Run chart-testing (list-changed)
         id: list-changed
@@ -35,3 +49,14 @@ jobs:
       - name: Run chart-testing (lint)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct lint --check-version-increment=false --target-branch ${{ github.event.repository.default_branch }}
+
+      - name: Run template tests
+        working-directory: charts/temporal/tests
+        run: go test
+
+      - name: Install helm-unittest
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
+      - name: Run helm-unittest
+        working-directory: charts/temporal
+        run: helm unittest .
