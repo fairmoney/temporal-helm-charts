@@ -510,6 +510,7 @@ web:
   topologySpreadConstraints: []
   podDisruptionBudget: {}
 schema:
+  elasticsearchIndexTemplate: ""  # leave empty to use default in image
   createDatabase:
     enabled: true
   setup:

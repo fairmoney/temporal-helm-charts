@@ -1,0 +1,10 @@
+{{- if .Values.schema.elasticsearchIndexTemplate }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "temporal.fullname" $ }}-{{ .Values.schema.elasticsearchIndexTemplate | replace ".json" "" }}
+data:
+  {{ .Values.schema.elasticsearchIndexTemplate }}: |-
+    {{- (.Files.Get (printf "files/%s" .Values.schema.elasticsearchIndexTemplate)) | nindent 4 }}
+{{- end }}
+
