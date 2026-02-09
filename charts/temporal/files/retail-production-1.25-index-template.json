@@ -3,9 +3,8 @@
   "index_patterns": ["temporal_visibility_v1*"],
   "settings": {
     "index": {
-      "number_of_shards": "2",
-      "number_of_replicas": "0",
-      "auto_expand_replicas": "0-2",
+      "number_of_shards": "3",
+      "number_of_replicas": "2",
       "search.idle.after": "365d",
       "sort.field": ["CloseTime", "StartTime", "RunId"],
       "sort.order": ["desc", "desc", "desc"],
