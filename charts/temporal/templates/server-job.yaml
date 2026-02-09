@@ -166,10 +166,11 @@ spec:
                 echo "Using curl for Elasticsearch setup"
 
                 echo "Creating index template: temporal_visibility_v1_template"
+                TEMPLATE_PATH="{{ if $.Values.schema.elasticsearchIndexTemplate }}/tmp/elasticsearch-template/{{ $.Values.schema.elasticsearchIndexTemplate }}{{ else }}schema/elasticsearch/visibility/index_template_$ES_VERSION.json{{ end }}"
                 curl -X PUT --fail --user "$ES_USER:$ES_PWD" \
                   "$ES_SCHEME://$ES_HOST:$ES_PORT/_template/temporal_visibility_v1_template" \
                   -H "Content-Type: application/json" \
-                  --data-binary "@schema/elasticsearch/visibility/index_template_$ES_VERSION.json"
+                  --data-binary "@$TEMPLATE_PATH"
 
                 echo "Checking if index exists: $ES_VISIBILITY_INDEX"
                 if ! curl --head --fail --user "$ES_USER:$ES_PWD" \
@@ -190,8 +191,13 @@ spec:
               {{- end }}
           env:
               {{- include "temporal.admintools-env" (list $ $store) | nindent 12 }}
+          volumeMounts:    
+              {{- if $.Values.schema.elasticsearchIndexTemplate }}
+            - name: elasticsearch-index-template
+              mountPath: /tmp/elasticsearch-template
+              readOnly: true
+              {{- end }}
               {{- with $.Values.admintools.additionalVolumeMounts }}
-          volumeMounts:
                 {{- toYaml . | nindent 12 }}
               {{- end }}
               {{- with $.Values.schema.resources }}
@@ -217,13 +223,28 @@ spec:
             {{- else if eq $driver "elasticsearch" }}
           command: ['sh', '-c']
           args:
-            - 'curl -X PUT --fail --user "$ES_USER:$ES_PWD" $ES_SCHEME://$ES_HOST:$ES_PORT/_template/temporal_visibility_v1_template -H "Content-Type: application/json" --data-binary "@schema/elasticsearch/visibility/index_template_$ES_VERSION.json" 2>&1 &&
-              curl -X PUT --fail --user "$ES_USER:$ES_PWD" $ES_SCHEME://$ES_HOST:$ES_PORT/$ES_VISIBILITY_INDEX 2>&1'
+            - |
+              TEMPLATE_PATH="{{- if $.Values.schema.elasticsearchIndexTemplate -}}/tmp/elasticsearch-template/{{ $.Values.schema.elasticsearchIndexTemplate }}{{- else -}}schema/elasticsearch/visibility/index_template_$ES_VERSION.json{{- end -}}"
+
+              curl -X PUT --fail \
+                --user "$ES_USER:$ES_PWD" \
+                "$ES_SCHEME://$ES_HOST:$ES_PORT/_template/temporal_visibility_v1_template" \
+                -H "Content-Type: application/json" \
+                --data-binary "@$TEMPLATE_PATH" 2>&1 &&
+
+              curl -X PUT --fail \
+                --user "$ES_USER:$ES_PWD" \
+                "$ES_SCHEME://$ES_HOST:$ES_PORT/$ES_VISIBILITY_INDEX" 2>&1
             {{- end }}
           env:
             {{- include "temporal.admintools-env" (list $ $store) | nindent 12 }}
-            {{- with $.Values.server.additionalVolumeMounts }}
           volumeMounts:
+              {{- if $.Values.schema.elasticsearchIndexTemplate }}
+            - name: elasticsearch-index-template
+              mountPath: /tmp/elasticsearch-template
+              readOnly: true
+              {{- end }}
+            {{- with $.Values.server.additionalVolumeMounts }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- with $.Values.schema.resources }}
@@ -370,8 +391,13 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $.Values.admintools.additionalVolumes }}
       volumes:
+{{- if $.Values.schema.elasticsearchIndexTemplate }}
+        - name: elasticsearch-index-template
+          configMap:
+            name: {{ include "temporal.fullname" $ }}-{{ .Values.schema.elasticsearchIndexTemplate | replace ".json" "" }}
+{{- end }}
+      {{- with $.Values.admintools.additionalVolumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end -}}

@@ -1,0 +1,12 @@
+{{- if .Values.schema.elasticsearchIndexTemplate }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: '-20'
+  name: {{ include "temporal.fullname" $ }}-{{ .Values.schema.elasticsearchIndexTemplate | replace ".json" "" }}
+data:
+  {{ .Values.schema.elasticsearchIndexTemplate }}: |-
+    {{- (.Files.Get (printf "files/%s" .Values.schema.elasticsearchIndexTemplate)) | nindent 4 }}
+{{- end }}
+
