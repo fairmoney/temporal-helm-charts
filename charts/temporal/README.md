@@ -1,4 +1,4 @@
-# Upgrade Temporal Helm chart
+# Upgrade Temporal Helm chart and Temporal image
 
 #### 1. Sync master branch
 
@@ -33,6 +33,10 @@ Mirror the tags used by the new temporal-helm-chart version.
 ### 4. Build new Temporal server image
 
 Follow [these](#upgrade-temporal-server-image) steps to upgrade the temporal server image to the release used by the new temporal-helm-chart version.
+
+### 5. Upgrade ElasticsSearch/Opensearch schema
+
+Follow [these](#upgrade-opensearch-schema) steps to upgrade the ElasticsSearch/Opensearch schema to the version used by the new temporal image.
 
 ## ECR Repositories inventory:
 
@@ -129,6 +133,39 @@ Lastly, a `Bundle.trust.cert-manager.io` resource takes all keys from `temporal-
 
 Detailed diagram [here](https://www.notion.so/fairmoney/Cross-cluster-trust-for-Temporal-root-CA-using-trust-manager-1967f8f1d6868093a4d3f7ed56ba734e).
 
+
+# Upgrade Opensearch schema
+
+**Important note:** Upgrade Temporal one major version at a time!!
+
+On https://github.com/temporalio/temporal/, check `schema/elasticsearch/visibility/versioned` and compare the current Temporal version with the target Temporal version. If there is any schema upgrade, check the new `vx` schema under `schema/elasticsearch/visibility/versioned` and look into `upgrade.sh` script. Inside the script, look for `new_mapping`.
+
+For example, in `schema/elasticsearch/visibility/versioned/v8/upgrade.sh` the new mapping to be added is:
+
+```
+new_mapping='
+{
+  "properties": {
+    "TemporalPauseInfo": {
+      "type": "keyword"
+    }
+  }
+}
+'
+```
+
+This new mapping must be manually added via Elasticsearch/Opensearch Dev Tools. Make sure to add the mapping to the correct index. Example:
+
+```
+PUT temporal_visibility_v1/_mapping
+{
+    "properties": {
+      "TemporalPauseInfo": {
+        "type": "keyword"
+      }
+    }
+}
+```
 
 
 ## 📖 Appendix A: 
