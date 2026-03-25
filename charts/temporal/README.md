@@ -71,11 +71,11 @@ Here is how the upgrade process to newer temporal release from upstream would lo
 
 #### 📚 Lets take the example of merging upstream `release/v1.29.x` into `fm/main`! 📚
 
-**Prerequisite 1**: Folow the instructions [here](#appendix-a) to sync `fairmoney/temporal-docker-builds` `main` branch with upstream `main`.
+**Prerequisite 1**: Folow the instructions [here](#-appendix-a) to sync `fairmoney/temporal-docker-builds` `main` branch with upstream `main`.
 
-**Prerequisite 2**: Folow the instructions [here](#appendix-b) to sync `fairmoney/temporal-docker-builds` `fm/main` branch with upstream `main`.
+**Prerequisite 2**: Folow the instructions [here](#-appendix-b) to sync `fairmoney/temporal-docker-builds` `fm/main` branch with upstream `main`.
 
-**Prerequisite 3**: Folow the instructions [here](#appendix-c) to sync fork repository `fairmoney/temporal-features` `fm/main` branch with upstream `main`.
+**Prerequisite 3**: Folow the instructions [here](#-appendix-c) to sync fork repository `fairmoney/temporal-features` `fm/main` branch with upstream `main`.
 
 ```
 git clone https://github.com/fairmoney/temporal.git # Clone the Fairmoney organization repository
@@ -90,7 +90,7 @@ git commit -m "Format fm claim mapper files"
 git push origin release/v1.29.x:fm/release/v1.29.x # Push the branch to the organization repository
 
 git checkout -b fm/ci-workflows-29 # Checkout to a new branch that will include the CI changes
-# Depending on the upstream evolution either cherry pick commit cd055d8eb2d7f3364f7f09f4c9baf8bc090c04b3 or manually change all the needed places to make CI working (see https://github.com/fairmoney/temporal/pull/17/files)
+# Depending on the upstream evolution either cherry pick commit cd055d8eb2d7f3364f7f09f4c9baf8bc090c04b3 and b8a670526b90bc5513b9714860b0d8020d9ed5b4 and 52766fb1ee9ad08f6d888f64d8a52102e3ebf446 or manually change all the needed places to make CI working (see https://github.com/fairmoney/temporal/pull/17/files)
 git push origin fm/ci-workflows-29
 # On the Fairmoney organization repository create pull request from fm/ci-workflows-29 into fm/release/v1.29.x (see https://github.com/fairmoney/temporal/pull/6)
 # Once there are no CI errors or failed tests (in case of failed unit tests, try to re-run only those failed tests, sometimes they fail because of timeout), merge the pull request opened to fm/release/v1.29.x
@@ -201,7 +201,7 @@ git push -u origin sync-upstream-main-1
 Open Pull Request sync-upstream-main-1 → main
 
 ## 📖 Appendix B:
-### Sync upstream/main into origin/main (via PR) in `fairmoney/temporal-docker-builds`
+### Sync upstream/main into origin/fm/main (via PR) in `fairmoney/temporal-docker-builds`
 
 This repo uses:
 - **origin** → `fairmoney/temporal-docker-builds` (copy)
@@ -247,7 +247,7 @@ git commit -m "fix conflicts and Reset temporal submodule pointer to base branch
 # Push branch to fork
 git push -u origin sync-upstream-main-2
 ```
-Open Pull Request sync-upstream-main-2 → main
+Open Pull Request sync-upstream-main-2 → fm/main
 
 ## 📖 Appendix C:
 ### Sync upstream `main` into `fm/main` (via PR) in `fairmoney/temporal-features`
