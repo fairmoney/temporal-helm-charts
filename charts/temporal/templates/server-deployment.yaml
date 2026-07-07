@@ -31,11 +31,6 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/server-sprig-configmap.yaml") $ | sha256sum }}-{{ include (print $.Template.BasePath "/server-dockerize-configmap.yaml") $ | sha256sum }}
-        {{- if (dig "metrics" "annotations" "enabled" $.Values.server.metrics.annotations.enabled $serviceValues) }}
-        prometheus.io/job: {{ $.Chart.Name }}-{{ $service }}
-        prometheus.io/scrape: 'true'
-        prometheus.io/port: '9090'
-        {{- end }}
         {{- include "temporal.resourceAnnotations" (list $ $service "pod") | nindent 8 }}
       labels:
         {{- include "temporal.resourceLabels" (list $ $service "pod") | nindent 8 }}
@@ -141,7 +136,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "temporal.persistence.secretName" (list $ "secondaryVisibility") }}
                   key: {{ include "temporal.persistence.secretKey" (list $ "secondaryVisibility") }}
-            {{- end }}      
+            {{- end }}
             {{- end }}
           {{- if and (hasKey $.Values.server "internalFrontend") $.Values.server.internalFrontend.enabled }}
             - name: USE_INTERNAL_FRONTEND

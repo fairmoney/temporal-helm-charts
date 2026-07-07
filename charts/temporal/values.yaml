@@ -37,8 +37,8 @@ server:
   deploymentStrategy:
     type: RollingUpdate
   metrics:
-    # Annotate pods directly with Prometheus annotations.
-    # Use this if you installed Prometheus from a Helm chart.
+    # Prometheus scrape annotations on the per-service headless Services (the pods are
+    # deliberately NOT annotated — annotating both doubles scraped sample volume).
     annotations:
       enabled: true
     # Additional tags to be added to Prometheus metrics
