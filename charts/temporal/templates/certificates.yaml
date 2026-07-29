@@ -233,7 +233,7 @@ spec:
 {{- else }}
 {{/* BEGIN Azure Key Vault specific implementation  */}}
 {{/* Multiple KV secrets are to be created */}}
-{{/* Each secret name is a certificate resourceVersion n 8-digit name */}}
+{{/* Each secret name is a certificate resourceVersion (an arbitrary-length integer) */}}
 {{/* Each secret content is the certificate in PEM format */}}
 ---
 apiVersion: kubernetes.crossplane.io/v1alpha2
@@ -271,6 +271,14 @@ spec:
         data:
           - match:
               secretKey: tls.crt
+            # the managed-by=external-secrets tag is included automatically
+            # (ESO forbids specifying it here)
+            metadata:
+              apiVersion: kubernetes.external-secrets.io/v1alpha1
+              kind: PushSecretMetadata
+              spec:
+                tags:
+                  temporal-root-ca: "true"
   providerConfigRef:
     name: provider-kubernetes
 ---
@@ -287,9 +295,10 @@ spec:
   dataFrom:
   - find:
       name:
-        regexp: "^[0-9]{8}$"
+        regexp: "^[0-9]+$"
       tags:
         managed-by: external-secrets
+        temporal-root-ca: "true"
   refreshInterval: 3m
   secretStoreRef:
     kind: ClusterSecretStore
