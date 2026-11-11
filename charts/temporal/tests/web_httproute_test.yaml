@@ -1,0 +1,103 @@
+suite: test web httproute
+templates:
+  - web-httproute.yaml
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders nothing when the web UI is disabled
+    set:
+      web:
+        enabled: false
+        httpRoute:
+          enabled: true
+          parentRefs:
+            - name: gw
+          hostnames:
+            - temporal.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: fails without parentRefs
+    set:
+      web:
+        httpRoute:
+          enabled: true
+          hostnames:
+            - temporal.example.com
+    asserts:
+      - failedTemplate:
+          errorPattern: parentRefs is required
+  - it: fails without hostnames
+    set:
+      web:
+        httpRoute:
+          enabled: true
+          parentRefs:
+            - name: gw
+    asserts:
+      - failedTemplate:
+          errorPattern: hostnames is required
+  - it: renders a route to the web service
+    release:
+      name: temporal
+    set:
+      web:
+        service:
+          port: 8080
+        httpRoute:
+          enabled: true
+          annotations:
+            example.com/key: value
+          parentRefs:
+            - group: gateway.networking.k8s.io
+              kind: Gateway
+              namespace: gw-ns
+              name: gw
+          hostnames:
+            - temporal.example.com
+          timeouts:
+            request: 0s
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: metadata.name
+          value: temporal-web
+      - equal:
+          path: metadata.annotations["example.com/key"]
+          value: value
+      - equal:
+          path: spec.parentRefs[0].name
+          value: gw
+      - equal:
+          path: spec.hostnames[0]
+          value: temporal.example.com
+      - equal:
+          path: spec.rules[0].matches[0].path
+          value:
+            type: PathPrefix
+            value: /
+      - equal:
+          path: spec.rules[0].timeouts.request
+          value: 0s
+      - equal:
+          path: spec.rules[0].backendRefs[0]
+          value:
+            name: temporal-web
+            port: 8080
+  - it: omits timeouts and annotations when unset
+    set:
+      web:
+        httpRoute:
+          enabled: true
+          parentRefs:
+            - name: gw
+          hostnames:
+            - temporal.example.com
+    asserts:
+      - notExists:
+          path: spec.rules[0].timeouts
+      - notExists:
+          path: metadata.annotations

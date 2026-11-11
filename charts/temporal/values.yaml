@@ -481,6 +481,18 @@ web:
     #  - secretName: chart-example-tls
     #    hosts:
     #      - chart-example.local
+  # Gateway API HTTPRoute for the web UI, an alternative to the ingress
+  httpRoute:
+    enabled: false
+    annotations: {}
+    # parentRefs and hostnames are required when enabled
+    parentRefs: []
+    #  - name: example-gateway
+    #    namespace: example-gateway-namespace
+    hostnames: []
+    #  - temporal.example.com
+    # rule timeouts, e.g. request: 0s; unset leaves the Gateway controller's default
+    timeouts: {}
   deploymentLabels: {}
   deploymentAnnotations: {}
   podAnnotations: {}
